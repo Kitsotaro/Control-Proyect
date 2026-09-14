@@ -1,13 +1,16 @@
 :root {
   --bg: #0f172a;
   --card: #1e293b;
+  --card-border: #334155;
   --text: #f8fafc;
   --subtext: #94a3b8;
-  --accent: #22c55e;
-  --border: #334155;
+  --accent-green: #22c55e;
+  --accent-blue: #3b82f6;
+  --accent-red: #ef4444;
+  --accent-yellow: #eab308;
+  --input-bg: #0f172a;
 }
 
-/* Prevenir desplazamiento horizontal en móviles */
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -27,74 +30,294 @@ body {
   justify-content: center;
   align-items: flex-start;
   min-height: 100vh;
-  padding: 16px;
+  padding: 12px;
 }
 
-.container {
+.app-container {
   width: 100%;
-  max-width: 500px;
+  max-width: 550px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
   background: var(--card);
-  padding: 20px;
+  border: 1px solid var(--card-border);
+  padding: 18px;
   border-radius: 16px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-h2 {
+h2, h3 {
   margin-top: 0;
-  font-size: 1.25rem;
-  color: #cbd5e1;
-  text-align: center;
+  color: var(--text);
 }
 
-.form-group {
+.subtext {
+  color: var(--subtext);
+  font-size: 0.875rem;
+}
+
+/* NAVEGACIÓN */
+.top-nav {
+  display: flex;
+  gap: 8px;
+  background: var(--card);
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+}
+
+.nav-btn {
+  flex: 1;
+  padding: 10px;
+  background: transparent;
+  border: none;
+  color: var(--subtext);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.status-bar {
+  font-size: 0.8rem;
+  color: var(--subtext);
+  text-align: center;
+  padding: 4px;
+}
+
+/* SEGMENTED TOGGLE (BOTONES PÍLDORA) */
+.segmented-control {
+  display: flex;
+  background: var(--input-bg);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
   margin-bottom: 16px;
-  width: 100%;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: var(--subtext);
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toggle-btn.active {
+  background: var(--card-border);
+  color: var(--text);
+}
+
+#btn-tipo-entrada.active { background: var(--accent-green); color: #022c22; }
+#btn-tipo-venta.active { background: var(--accent-blue); color: white; }
+
+/* FORMULARIOS */
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.form-row .form-group {
+  flex: 1;
 }
 
 label {
   display: block;
-  font-size: 0.875rem;
-  margin-bottom: 6px;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
   color: var(--subtext);
 }
 
-input, select, textarea {
+input, select {
   width: 100%;
-  padding: 12px;
+  padding: 11px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  border: 1px solid var(--card-border);
+  background: var(--input-bg);
   color: white;
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
-button {
+.input-disabled {
+  opacity: 0.6;
+  background: #1a2332;
+}
+
+.btn-primary {
   width: 100%;
   padding: 14px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: none;
-  background: var(--accent);
+  background: var(--accent-green);
   color: #022c22;
   font-weight: bold;
   font-size: 1rem;
   cursor: pointer;
-  margin-top: 10px;
-  transition: opacity 0.2s;
+  margin-top: 8px;
 }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.hidden {
-  display: none !important;
-}
-
-#status {
-  margin-top: 15px;
-  font-size: 0.875rem;
-  text-align: center;
+.btn-secondary {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: transparent;
   color: var(--subtext);
-  word-break: break-word;
+  cursor: pointer;
 }
+
+.btn-secondary-sm {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* MÉTRICAS & GRID */
+.metrics-grid {
+  display: flex;
+  gap: 12px;
+}
+
+.metric-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.metric-title {
+  font-size: 0.75rem;
+  color: var(--subtext);
+}
+
+.metric-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+.accent-blue .metric-value { color: var(--accent-blue); }
+.accent-green .metric-value { color: var(--accent-green); }
+
+/* CONTROL DE STOCK & SEMÁFORO */
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.filter-bar {
+  margin-bottom: 12px;
+}
+
+.checkbox-container {
+  font-size: 0.85rem;
+  color: var(--subtext);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.product-item {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-left: 5px solid var(--card-border);
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Colores de Semáforo */
+.product-item.desabastecido { border-left-color: var(--accent-red); }
+.product-item.stock-bajo { border-left-color: var(--accent-yellow); }
+.product-item.stock-optimo { border-left-color: var(--accent-green); }
+
+.prod-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.prod-title {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.prod-sub {
+  font-size: 0.75rem;
+  color: var(--subtext);
+}
+
+.prod-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.desabastecido .prod-badge { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+.stock-bajo .prod-badge { background: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); }
+.stock-optimo .prod-badge { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+
+/* CHART CONTAINER */
+.chart-container {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+
+/* MODAL */
+.modal {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 400px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.hidden { display: none !important; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
