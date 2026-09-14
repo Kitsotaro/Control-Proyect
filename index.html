@@ -6,7 +6,6 @@
   <title>Control Financiero y Bodega</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="style.css">
-  <!-- Chart.js para el gráfico de pastel interactivo -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -20,126 +19,158 @@
     <button id="btn-login" class="btn-primary" onclick="handleAuthClick()">Iniciar Sesión con Google</button>
   </div>
 
-  <!-- NAVEGACIÓN Y PANEL PRINCIPAL (SE MUESTRA TRAS LOGUEARSE) -->
+  <!-- PANEL PRINCIPAL -->
   <div id="main-app" class="hidden">
     
-    <!-- MENÚ DE NAVEGACIÓN PRINCIPAL -->
+    <!-- NAVEGACIÓN PRINCIPAL -->
     <nav class="top-nav">
-      <button class="nav-btn active" onclick="switchTab('tab-registrar')">➕ Registrar</button>
-      <button class="nav-btn" onclick="switchTab('tab-stock')">📦 Stock & Catálogo</button>
-      <button class="nav-btn" onclick="switchTab('tab-ventas')">📊 Ventas Hoy</button>
+      <button class="nav-btn active" onclick="switchTab('tab-registrar', event)">➕ Registrar</button>
+      <button class="nav-btn" onclick="switchTab('tab-stock', event)">📦 Stock & Catálogo</button>
+      <button class="nav-btn" onclick="switchTab('tab-ventas', event)">📊 Dashboard</button>
     </nav>
 
     <!-- STATUS BAR -->
     <div id="status" class="status-bar">Listo para conectar.</div>
 
-    <!-- PESTAÑA 1: FORMULARIO DINÁMICO DE REGISTRO -->
+    <!-- PESTAÑA 1: REGISTRO (ENTRADA / VENTA) -->
     <section id="tab-registrar" class="tab-content active">
       <div class="card">
         <h3>Registrar Movimiento</h3>
         
-        <!-- Segmented Toggle (Entrada vs Venta) -->
+        <!-- Segmented Toggle -->
         <div class="segmented-control">
-          <button type="button" id="btn-tipo-entrada" class="toggle-btn active" onclick="setTipoMovimiento('ENTRADA')">📥 Entrada</button>
-          <button type="button" id="btn-tipo-venta" class="toggle-btn" onclick="setTipoMovimiento('VENTA')">📤 Venta</button>
+          <button type="button" id="btn-tipo-entrada" class="toggle-btn active" onclick="setTipoMovimiento('ENTRADA')">📥 Entrada (Compra)</button>
+          <button type="button" id="btn-tipo-venta" class="toggle-btn" onclick="setTipoMovimiento('VENTA')">📤 Venta (Despacho)</button>
         </div>
 
-        <form id="finance-form" onsubmit="guardarMovimiento(event)">
-          <!-- Campo ID / Folio (Bloqueado) -->
+        <!-- FECHA Y FOLIO -->
+        <div class="form-row">
           <div class="form-group">
-            <label for="trans-id">Folio ID</label>
-            <input type="text" id="trans-id" readonly class="input-disabled" placeholder="IN-000001">
+            <label>Folio / Transacción</label>
+            <input type="text" id="trans-id" class="input-disabled" readonly />
+          </div>
+          <div class="form-group">
+            <label>Fecha Movimiento</label>
+            <input type="date" id="fecha-mov" required />
+          </div>
+        </div>
+
+        <!-- FORMULARIO DE ENTRADA -->
+        <form id="form-entrada" onsubmit="guardarMovimiento(event)">
+          <!-- Fila 1: Marca + Producto -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Marca / Empresa</label>
+              <input type="text" id="prod-marca" placeholder="Ej: La Constancia" required />
+            </div>
+            <div class="form-group">
+              <label>Producto / Línea</label>
+              <input type="text" id="prod-linea" placeholder="Ej: Pepsi" required />
+            </div>
           </div>
 
-          <!-- Fecha del movimiento -->
-          <div class="form-group">
-            <label for="fecha-mov">Fecha del Movimiento</label>
-            <input type="date" id="fecha-mov" required>
+          <!-- Fila 2: Tipo de Empaque, Cantidad, Presentación -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Tipo de Empaque</label>
+              <input type="text" id="prod-tipo-empaque" placeholder="Caja, Sixpack, etc." required />
+            </div>
+            <div class="form-group" style="flex: 0.6;">
+              <label>Cantidad</label>
+              <input type="number" step="any" id="mov-cantidad-in" placeholder="Ej: 10" required />
+            </div>
+            <div class="form-group">
+              <label>Presentación</label>
+              <input type="text" id="prod-presentacion" placeholder="Botella, Lata, Tetra" required />
+            </div>
           </div>
 
-          <!-- OMNIBOX / BUSCADOR INTELIGENTE -->
+          <!-- Fila 3: Variante + Contenido/Volumen -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Variante</label>
+              <input type="text" id="prod-variante" placeholder="Uva Fresa Crunch" />
+            </div>
+            <div class="form-group">
+              <label>Contenido / Vol.</label>
+              <input type="text" id="prod-volumen" placeholder="Ej: 1.5 Lts, 600g" required />
+            </div>
+          </div>
+
+          <!-- Fila Bonificación -->
+          <div class="form-group" id="group-bonificacion">
+            <label>Cantidad Bonificada (Regalo / Promoción)</label>
+            <input type="number" step="any" id="mov-bonificacion" placeholder="0" value="0" />
+          </div>
+
+          <!-- Fila Precios -->
+          <div class="price-section-container">
+            <h3 class="price-title">💰 Tarifas y Precios de Operación</h3>
+            <div class="form-row">
+              <div class="form-group" id="group-precio-distribuidor">
+                <label>Precio Distribuidor (Costo)</label>
+                <input type="number" step="0.00001" inputmode="decimal" id="precio-distribuidor" placeholder="00.000" required oninput="validarPrecioDistribuidor(this)" />
+                <span id="warn-pdist" class="warning-text hidden">Máximo 5 decimales permitidos</span>
+              </div>
+              <div class="form-group">
+                <label>Precio Consumidor (Venta)</label>
+                <input type="number" step="0.01" inputmode="decimal" id="precio-consumidor" placeholder="0.00" required oninput="validarPrecioConsumidor(this)" />
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" id="btn-save-in" class="btn-primary">Guardar Entrada</button>
+        </form>
+
+        <!-- FORMULARIO DE VENTA -->
+        <form id="form-venta" class="hidden" onsubmit="guardarMovimiento(event)">
+          <!-- Buscador directo del catálogo -->
           <div class="form-group">
-            <label for="omnibox-producto">Buscar Producto (SKU o Nombre)</label>
-            <input type="text" id="omnibox-producto" list="dl-productos" placeholder="Ej: Gatorade 600ml Uva..." autocomplete="off" oninput="onSeleccionarProductoOmnibox(this.value)">
+            <label>🔍 Buscar Producto (Código SKU o Texto)</label>
+            <input type="text" id="buscar-producto-venta" list="dl-productos" placeholder="Buscar por SKU o nombre..." oninput="onSeleccionarProductoVenta(this.value)" required />
             <datalist id="dl-productos"></datalist>
           </div>
 
-          <!-- CAMPOS DESGLOSADOS DE FICHA DE PRODUCTO -->
-          <div id="campos-producto-detalles">
-            <div class="form-row">
-              <div class="form-group">
-                <label for="prod-marca">Marca</label>
-                <input type="text" id="prod-marca" list="dl-marcas" placeholder="Pepsi" required>
-                <datalist id="dl-marcas"></datalist>
-              </div>
-              <div class="form-group">
-                <label for="prod-linea">Producto / Línea</label>
-                <input type="text" id="prod-linea" list="dl-lineas" placeholder="Gatorade" required>
-                <datalist id="dl-lineas"></datalist>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="prod-magnitud">Magnitud</label>
-                <input type="text" id="prod-magnitud" list="dl-magnitudes" placeholder="Caja" required>
-                <datalist id="dl-magnitudes"></datalist>
-              </div>
-              <div class="form-group">
-                <label for="prod-cant-emp">Unid. x Magnitud</label>
-                <input type="number" id="prod-cant-emp" min="1" value="12" required>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="prod-volumen">Volumen / Medida</label>
-                <input type="text" id="prod-volumen" list="dl-volumenes" placeholder="600ml" required>
-                <datalist id="dl-volumenes"></datalist>
-              </div>
-              <div class="form-group">
-                <label for="prod-variante">Variante / Sabor (Opc.)</label>
-                <input type="text" id="prod-variante" list="dl-variantes" placeholder="Uva">
-                <datalist id="dl-variantes"></datalist>
-              </div>
-            </div>
-          </div>
-
-          <!-- CANTIDAD & PRECIOS DINÁMICOS -->
+          <!-- Campos Deshabilitados autocompletados -->
           <div class="form-row">
             <div class="form-group">
-              <label for="mov-cantidad">Cantidad (Empaques)</label>
-              <input type="number" id="mov-cantidad" step="any" min="0.01" placeholder="1" required>
+              <label>Marca</label>
+              <input type="text" id="venta-prod-marca" class="input-disabled" readonly placeholder="--" />
             </div>
-            
-            <!-- Campo Bonificación (Solo visible en Entradas) -->
-            <div class="form-group" id="group-bonificacion">
-              <label for="mov-bonificacion">Bonificación (Unid.)</label>
-              <input type="number" id="mov-bonificacion" step="1" min="0" value="0">
+            <div class="form-group">
+              <label>Producto</label>
+              <input type="text" id="venta-prod-linea" class="input-disabled" readonly placeholder="--" />
             </div>
           </div>
 
           <div class="form-row">
-            <!-- Precio Distribuidor (Solo visible en Entradas) -->
-            <div class="form-group" id="group-precio-distribuidor">
-              <label for="precio-distribuidor">Precio Distribuidor ($)</label>
-              <input type="number" step="0.0001" id="precio-distribuidor" placeholder="0.0000">
-            </div>
-            
             <div class="form-group">
-              <label for="precio-consumidor">Precio Consumidor ($)</label>
-              <input type="number" step="0.01" id="precio-consumidor" placeholder="0.00" required>
+              <label>Presentación</label>
+              <input type="text" id="venta-prod-presentacion" class="input-disabled" readonly placeholder="--" />
+            </div>
+            <div class="form-group">
+              <label>Variante</label>
+              <input type="text" id="venta-prod-variante" class="input-disabled" readonly placeholder="--" />
+            </div>
+            <div class="form-group">
+              <label>Cont. / Vol.</label>
+              <input type="text" id="venta-prod-volumen" class="input-disabled" readonly placeholder="--" />
             </div>
           </div>
 
-          <button type="submit" id="btn-save" class="btn-primary">Guardar Registro</button>
+          <!-- Cantidad y Botón Guardar -->
+          <div class="form-group">
+            <label>Cantidad (Salida)</label>
+            <input type="number" step="any" id="mov-cantidad-out" placeholder="Ej: 2" required />
+          </div>
+
+          <button type="submit" id="btn-save-out" class="btn-primary btn-sale" disabled>Registrar Venta</button>
         </form>
       </div>
     </section>
 
-    <!-- PESTAÑA 2: DASHBOARD CONTROL DE STOCK & CATÁLOGO -->
+    <!-- PESTAÑA 2: STOCK & CATÁLOGO -->
     <section id="tab-stock" class="tab-content">
-      <!-- Métrica Bodega -->
       <div class="metrics-grid">
         <div class="card metric-card">
           <span class="metric-title">Valor Real Bodega</span>
@@ -151,7 +182,6 @@
         </div>
       </div>
 
-      <!-- Gráfico de Pastel -->
       <div class="card">
         <div class="card-header-flex">
           <h3>Distribución de Stock</h3>
@@ -165,7 +195,6 @@
         </div>
       </div>
 
-      <!-- Controles de Lista -->
       <div class="card">
         <div class="card-header-flex">
           <h3>Inventario / Catálogo</h3>
@@ -175,43 +204,47 @@
         <div class="filter-bar">
           <label class="checkbox-container">
             <input type="checkbox" id="chk-mostrar-obsoletos" onchange="renderizarListaStock()">
-            Mostrar Obsoletos
+            <span>Mostrar Obsoletos</span>
           </label>
         </div>
 
-        <!-- Lista de Productos con Semáforo -->
-        <div id="lista-productos-stock" class="product-list">
-          <!-- Se puebla dinámicamente -->
-        </div>
+        <div id="lista-productos-stock" class="product-list"></div>
       </div>
     </section>
 
-    <!-- PESTAÑA 3: VENTAS DEL DÍA & MÉTRICAS -->
+    <!-- PESTAÑA 3: DASHBOARD DE VENTAS -->
     <section id="tab-ventas" class="tab-content">
+      <div class="card filter-card">
+        <div class="form-row align-center">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>📅 Filtrar por Fecha</label>
+            <input type="date" id="filtro-fecha-ventas" onchange="renderizarVentasHoy()" />
+          </div>
+          <button class="btn-secondary-sm" style="margin-top: 18px;" onclick="resetearFiltroFechaVentas()">Ver Hoy</button>
+        </div>
+      </div>
+
       <div class="metrics-grid">
         <div class="card metric-card accent-blue">
-          <span class="metric-title">Vendido Hoy</span>
+          <span class="metric-title">Ventas Totales</span>
           <span class="metric-value" id="metric-venta-hoy">$0.00</span>
         </div>
         <div class="card metric-card accent-green">
-          <span class="metric-title">Utilidad Hoy</span>
+          <span class="metric-title">Margen/Ganancia</span>
           <span class="metric-value" id="metric-utilidad-hoy">$0.00</span>
         </div>
       </div>
 
       <div class="card">
-        <h3>Detalle de Salidas Hoy</h3>
-        <div id="lista-ventas-hoy" class="product-list">
-          <!-- Se puebla dinámicamente -->
-        </div>
+        <h3>Detalle de Salidas</h3>
+        <div id="lista-ventas-hoy" class="product-list"></div>
       </div>
     </section>
-
   </div>
 
 </div>
 
-<!-- MODAL EDICIÓN PRECIOS Y ESTADO -->
+<!-- MODAL EDICIÓN -->
 <div id="modal-editar" class="modal hidden">
   <div class="modal-content card">
     <h3 id="modal-titulo">Editar Producto</h3>
@@ -219,12 +252,12 @@
     
     <div class="form-group">
       <label for="modal-p-distributor">Precio Distribuidor ($)</label>
-      <input type="number" id="modal-p-distributor" step="0.0001">
+      <input type="number" id="modal-p-distributor" step="0.00001" oninput="validarPrecioDistribuidor(this)">
     </div>
     
     <div class="form-group">
       <label for="modal-p-consumer">Precio Consumidor ($)</label>
-      <input type="number" id="modal-p-consumer" step="0.01">
+      <input type="number" id="modal-p-consumer" step="0.01" oninput="validarPrecioConsumidor(this)">
     </div>
 
     <div class="form-group">
@@ -242,7 +275,6 @@
   </div>
 </div>
 
-<!-- Librerías Oficiales de Google -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <script src="app.js"></script>
