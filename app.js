@@ -1,17 +1,18 @@
 // CONFIGURACIÓN CENTRAL
 const CLIENT_ID = '1070607567316-mdbd97lbkprgpc4spj71e5f8anovr6it.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
-const DB_FILE_NAME = 'RutaControl_DB'; // Nombre automático de la base de datos en Drive
+const DB_FILE_NAME = 'RutaControl_DB';
 
-let SPREADSHEET_ID = ''; // Se asigna automáticamente tras buscar o crear el archivo
+let SPREADSHEET_ID = '';
 let tokenClient;
 let gapiInited = false;
 let gsisInited = false;
 
 // ESTADO DE LA APLICACIÓN
-let tipoMovimiento = 'ENTRADA'; // 'ENTRADA' o 'VENTA'
-let catalogoProductos = []; // Almacena ítems leídos de CATALOGO
-let vistaUnidadesSueltas = false; // Alternar vista de Cajas a Unidades
+let tipoMovimiento = 'ENTRADA';
+let catalogoProductos = [];
+let productoVentaSeleccionado = null;
+let vistaUnidadesSueltas = false;
 let stockChartInstance = null;
 let estadoModalSeleccionado = 'ACTIVO';
 
@@ -64,12 +65,14 @@ function handleAuthClick() {
 }
 
 // NAVEGACIÓN ENTRE PESTAÑAS
-function switchTab(tabId) {
+function switchTab(tabId, event) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   
   document.getElementById(tabId).classList.add('active');
-  event.currentTarget.classList.add('active');
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
+  }
 
   if (tabId === 'tab-stock') {
     renderizarDashboardStock();
@@ -84,26 +87,48 @@ function setTipoMovimiento(tipo) {
   document.getElementById('btn-tipo-entrada').classList.toggle('active', tipo === 'ENTRADA');
   document.getElementById('btn-tipo-venta').classList.toggle('active', tipo === 'VENTA');
 
-  // Ajustar visibilidad de campos según regla
-  document.getElementById('group-bonificacion').style.display = (tipo === 'ENTRADA') ? 'block' : 'none';
-  document.getElementById('group-precio-distribuidor').style.display = (tipo === 'ENTRADA') ? 'block' : 'none';
+  document.getElementById('form-entrada').classList.toggle('hidden', tipo !== 'ENTRADA');
+  document.getElementById('form-venta').classList.toggle('hidden', tipo !== 'VENTA');
 
   generarFolioCorrelativo();
 }
 
-// LECTURA DE CATALOGO Y GESTIÓN AUTOMÁTICA DE BASE DE DATOS
+// VALIDACIONES DE PRECIOS CON DECIMALES
+function validarPrecioDistribuidor(input) {
+  const val = input.value;
+  const warn = document.getElementById('warn-pdist');
+  if (val.includes('.')) {
+    const decimals = val.split('.')[1];
+    if (decimals && decimals.length > 5) {
+      if (warn) warn.classList.remove('hidden');
+      input.value = parseFloat(val).toFixed(5);
+      return;
+    }
+  }
+  if (warn) warn.classList.add('hidden');
+}
+
+function validarPrecioConsumidor(input) {
+  const val = input.value;
+  if (val.includes('.')) {
+    const decimals = val.split('.')[1];
+    if (decimals && decimals.length > 2) {
+      input.value = parseFloat(val).toFixed(2);
+    }
+  }
+}
+
+// LECTURA DE CATALOGO Y BD
 async function cargarDatosIniciales() {
   try {
-    // 1. Detección o Auto-creación en Google Drive
     SPREADSHEET_ID = await buscarOCrearBaseDatos();
 
-    // 2. Carga de datos desde la pestaña CATALOGO
     const res = await gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'CATALOGO!A2:L',
     });
 
-    const rows = res.result.values || [];
+    const rows = res.result ? res.result.values || [] : [];
     catalogoProductos = rows.map(r => ({
       sku: r[0], marca: r[1], linea: r[2], magnitud: r[3],
       cantEmp: parseInt(r[4]) || 1, volumen: r[5], variante: r[6] || '',
@@ -119,7 +144,6 @@ async function cargarDatosIniciales() {
   }
 }
 
-// BÚSQUEDA O CREACIÓN DE HOJA DE CÁLCULO
 async function buscarOCrearBaseDatos() {
   const response = await gapi.client.drive.files.list({
     q: `name = '${DB_FILE_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
@@ -127,7 +151,7 @@ async function buscarOCrearBaseDatos() {
     spaces: 'drive'
   });
 
-  const files = response.result.files;
+  const files = response.result ? response.result.files : null;
 
   if (files && files.length > 0) {
     return files[0].id;
@@ -151,7 +175,6 @@ async function buscarOCrearBaseDatos() {
   }
 }
 
-// INICIALIZACIÓN DE ENCABEZADOS DE PESTAÑAS
 async function inicializarEncabezadosBD(spreadsheetId) {
   const encabezadosLOG = [
     'TRANS_ID', 'TIMESTAMP_LOG', 'FECHA_MOV', 'TIPO_MOV', 'SKU_ITEM',
@@ -186,33 +209,44 @@ async function inicializarEncabezadosBD(spreadsheetId) {
 
 function poblarDataLists() {
   const dlProds = document.getElementById('dl-productos');
+  if (!dlProds) return;
   dlProds.innerHTML = '';
   
   catalogoProductos.filter(p => p.estado === 'ACTIVO').forEach(p => {
     const opt = document.createElement('option');
-    opt.value = `${p.marca} ${p.linea} ${p.volumen} ${p.variante}`.trim();
-    opt.dataset.sku = p.sku;
+    opt.value = `[${p.sku}] ${p.marca} ${p.linea} ${p.volumen} ${p.variante}`.trim();
     dlProds.appendChild(opt);
   });
 }
 
-function onSeleccionarProductoOmnibox(val) {
-  const prod = catalogoProductos.find(p => `${p.marca} ${p.linea} ${p.volumen} ${p.variante}`.trim() === val.trim());
+function onSeleccionarProductoVenta(val) {
+  const prod = catalogoProductos.find(p => 
+    val.includes(`[${p.sku}]`) || p.sku.toLowerCase() === val.trim().toLowerCase()
+  );
+
+  const btnSave = document.getElementById('btn-save-out');
+
   if (prod) {
-    document.getElementById('prod-marca').value = prod.marca;
-    document.getElementById('prod-linea').value = prod.linea;
-    document.getElementById('prod-magnitud').value = prod.magnitud;
-    document.getElementById('prod-cant-emp').value = prod.cantEmp;
-    document.getElementById('prod-volumen').value = prod.volumen;
-    document.getElementById('prod-variante').value = prod.variante;
-    document.getElementById('precio-distribuidor').value = prod.pDist;
-    document.getElementById('precio-consumidor').value = prod.pCons;
+    productoVentaSeleccionado = prod;
+    document.getElementById('venta-prod-marca').value = prod.marca;
+    document.getElementById('venta-prod-linea').value = prod.linea;
+    document.getElementById('venta-prod-presentacion').value = prod.magnitud;
+    document.getElementById('venta-prod-variante').value = prod.variante;
+    document.getElementById('venta-prod-volumen').value = prod.volumen;
+    btnSave.disabled = false;
+  } else {
+    productoVentaSeleccionado = null;
+    document.getElementById('venta-prod-marca').value = '';
+    document.getElementById('venta-prod-linea').value = '';
+    document.getElementById('venta-prod-presentacion').value = '';
+    document.getElementById('venta-prod-variante').value = '';
+    document.getElementById('venta-prod-volumen').value = '';
+    btnSave.disabled = true;
   }
 }
 
-// GENERADOR DE SKU COMPACTO INMUTABLE
 function generarSKUCompacto(marca, linea, volumen, variante) {
-  const clean = (t) => t.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 3);
+  const clean = (t) => (t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 3);
   const m = clean(marca);
   const l = clean(linea);
   const v = clean(volumen);
@@ -227,7 +261,7 @@ async function generarFolioCorrelativo() {
       spreadsheetId: SPREADSHEET_ID,
       range: 'LOG_TRANS!A:A',
     });
-    const rows = res.result.values || [];
+    const rows = res.result ? res.result.values || [] : [];
     let maxNum = 0;
     rows.forEach(r => {
       if (r[0] && r[0].startsWith(prefijo)) {
@@ -242,41 +276,57 @@ async function generarFolioCorrelativo() {
   }
 }
 
-// GUARDAR MOVIMIENTO Y ACTUALIZAR STOCK ATÓMICO
+// GUARDAR MOVIMIENTO
 async function guardarMovimiento(event) {
   event.preventDefault();
-  const btn = document.getElementById('btn-save');
+  const btn = (tipoMovimiento === 'ENTRADA') ? document.getElementById('btn-save-in') : document.getElementById('btn-save-out');
   btn.disabled = true;
   document.getElementById('status').innerText = 'Guardando registro...';
 
   const transId = document.getElementById('trans-id').value;
   const timestampLog = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const fechaMov = document.getElementById('fecha-mov').value;
-  
-  const marca = document.getElementById('prod-marca').value.trim();
-  const linea = document.getElementById('prod-linea').value.trim();
-  const magnitud = document.getElementById('prod-magnitud').value.trim();
-  const cantEmp = parseInt(document.getElementById('prod-cant-emp').value);
-  const volumen = document.getElementById('prod-volumen').value.trim();
-  const variante = document.getElementById('prod-variante').value.trim();
 
-  const rawCantidad = parseFloat(document.getElementById('mov-cantidad').value);
+  let marca, linea, magnitud, cantEmp, volumen, variante, pDist, pCons, sku, rawCantidad, bonif;
+
+  if (tipoMovimiento === 'ENTRADA') {
+    marca = document.getElementById('prod-marca').value.trim();
+    linea = document.getElementById('prod-linea').value.trim();
+    magnitud = document.getElementById('prod-presentacion').value.trim();
+    cantEmp = 1;
+    volumen = document.getElementById('prod-volumen').value.trim();
+    variante = document.getElementById('prod-variante').value.trim();
+    rawCantidad = parseFloat(document.getElementById('mov-cantidad-in').value);
+    bonif = parseFloat(document.getElementById('mov-bonificacion').value) || 0;
+    pDist = parseFloat(document.getElementById('precio-distribuidor').value) || 0;
+    pCons = parseFloat(document.getElementById('precio-consumidor').value) || 0;
+    sku = generarSKUCompacto(marca, linea, volumen, variante);
+  } else {
+    if (!productoVentaSeleccionado) {
+      alert('Debes seleccionar un producto válido antes de guardar la venta.');
+      btn.disabled = false;
+      return;
+    }
+    marca = productoVentaSeleccionado.marca;
+    linea = productoVentaSeleccionado.linea;
+    magnitud = productoVentaSeleccionado.magnitud;
+    cantEmp = productoVentaSeleccionado.cantEmp;
+    volumen = productoVentaSeleccionado.volumen;
+    variante = productoVentaSeleccionado.variante;
+    rawCantidad = parseFloat(document.getElementById('mov-cantidad-out').value);
+    bonif = 0;
+    pDist = productoVentaSeleccionado.pDist;
+    pCons = productoVentaSeleccionado.pCons;
+    sku = productoVentaSeleccionado.sku;
+  }
+
   const cantidadSigno = (tipoMovimiento === 'VENTA') ? -Math.abs(rawCantidad) : Math.abs(rawCantidad);
-  const bonif = (tipoMovimiento === 'ENTRADA') ? parseFloat(document.getElementById('mov-bonificacion').value) || 0 : 0;
-  
-  const pDist = parseFloat(document.getElementById('precio-distribuidor').value) || 0;
-  const pCons = parseFloat(document.getElementById('precio-consumidor').value) || 0;
-
-  const sku = generarSKUCompacto(marca, linea, volumen, variante);
-
-  // Cálculos matemáticos
   const totalInversion = Math.abs(cantidadSigno) * pDist;
   const margenUnit = pCons - pDist;
   const totalVenta = Math.abs(cantidadSigno) * pCons;
   const utilidadNeta = Math.abs(cantidadSigno) * margenUnit;
 
   try {
-    // 1. Guardar en LOG_TRANS
     await gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'LOG_TRANS!A:S',
@@ -291,12 +341,13 @@ async function guardarMovimiento(event) {
       }
     });
 
-    // 2. Actualizar o Insertar en CATALOGO
     let prodIndex = catalogoProductos.findIndex(p => p.sku === sku);
     if (prodIndex >= 0) {
       catalogoProductos[prodIndex].stock += cantidadSigno;
-      catalogoProductos[prodIndex].pDist = pDist || catalogoProductos[prodIndex].pDist;
-      catalogoProductos[prodIndex].pCons = pCons || catalogoProductos[prodIndex].pCons;
+      if (tipoMovimiento === 'ENTRADA') {
+        catalogoProductos[prodIndex].pDist = pDist || catalogoProductos[prodIndex].pDist;
+        catalogoProductos[prodIndex].pCons = pCons || catalogoProductos[prodIndex].pCons;
+      }
     } else {
       catalogoProductos.push({
         sku, marca, linea, magnitud, cantEmp, volumen, variante,
@@ -307,7 +358,12 @@ async function guardarMovimiento(event) {
     await reescribirHojaCatalogo();
 
     document.getElementById('status').innerText = '¡Guardado correctamente!';
-    document.getElementById('finance-form').reset();
+    if (tipoMovimiento === 'ENTRADA') document.getElementById('form-entrada').reset();
+    else {
+      document.getElementById('form-venta').reset();
+      document.getElementById('btn-save-out').disabled = true;
+      productoVentaSeleccionado = null;
+    }
     document.getElementById('fecha-mov').valueAsDate = new Date();
     await cargarDatosIniciales();
   } catch (err) {
@@ -331,7 +387,7 @@ async function reescribirHojaCatalogo() {
   });
 }
 
-// RENDERS DE DASHBOARD & GRÁFICO
+// RENDERS STOCK & VENTAS
 function renderizarDashboardStock() {
   let valorTotalBodega = 0;
   let totalUnidadesSueltas = 0;
@@ -355,7 +411,6 @@ function renderizarListaStock() {
   const mostrarObsoletos = document.getElementById('chk-mostrar-obsoletos').checked;
   container.innerHTML = '';
 
-  // Ordenamiento por Semáforo: Desabastecido (1) -> Stock Bajo (2) -> Stock Óptimo (3)
   const listaProcesada = catalogoProductos
     .filter(p => mostrarObsoletos || p.estado === 'ACTIVO')
     .sort((a, b) => {
@@ -375,7 +430,7 @@ function renderizarListaStock() {
       <div class="prod-info">
         <span class="prod-title">${p.marca} ${p.linea} ${p.volumen} ${p.variante}</span>
         <span class="prod-sub">SKU: ${p.sku} | Stock: <strong>${displayStock}</strong></span>
-        <span class="prod-sub">Dist: $${p.pDist.toFixed(2)} | Cons: $${p.pCons.toFixed(2)}</span>
+        <span class="prod-sub">Dist: $${p.pDist.toFixed(5)} | Cons: $${p.pCons.toFixed(2)}</span>
         <span class="prod-badge">${semaforoTexto} (${p.estado})</span>
       </div>
       <div>
@@ -421,7 +476,59 @@ function renderizarGraficoStock() {
   });
 }
 
-// MODAL Y HISTORIAL LOG
+async function renderizarVentasHoy() {
+  const fechaFiltro = document.getElementById('filtro-fecha-ventas').value;
+  const targetDate = fechaFiltro || new Date().toISOString().split('T')[0];
+
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'LOG_TRANS!A2:S',
+    });
+
+    const rows = res.result ? res.result.values || [] : [];
+    let totalVentas = 0;
+    let totalGanancia = 0;
+    const listaVentas = document.getElementById('lista-ventas-hoy');
+    listaVentas.innerHTML = '';
+
+    rows.forEach(r => {
+      const fechaMov = r[2];
+      const tipo = r[3];
+      if (tipo === 'VENTA' && fechaMov === targetDate) {
+        const vta = parseFloat(r[17]) || 0;
+        const util = parseFloat(r[18]) || 0;
+        totalVentas += vta;
+        totalGanancia += util;
+
+        const div = document.createElement('div');
+        div.className = 'product-item stock-optimo';
+        div.innerHTML = `
+          <div class="prod-info">
+            <span class="prod-title">${r[5]} ${r[6]} ${r[8]}</span>
+            <span class="prod-sub">Folio: ${r[0]} | Cant: ${Math.abs(parseFloat(r[11]))}</span>
+          </div>
+          <div>
+            <strong>$${vta.toFixed(2)}</strong>
+          </div>
+        `;
+        listaVentas.appendChild(div);
+      }
+    });
+
+    document.getElementById('metric-venta-hoy').innerText = `$${totalVentas.toFixed(2)}`;
+    document.getElementById('metric-utilidad-hoy').innerText = `$${totalGanancia.toFixed(2)}`;
+  } catch (err) {
+    document.getElementById('status').innerText = 'Error al cargar ventas: ' + err.message;
+  }
+}
+
+function resetearFiltroFechaVentas() {
+  document.getElementById('filtro-fecha-ventas').value = '';
+  renderizarVentasHoy();
+}
+
+// MODAL
 function abrirModalEdicion(sku) {
   const prod = catalogoProductos.find(p => p.sku === sku);
   if (!prod) return;
@@ -453,7 +560,6 @@ async function guardarCambiosModal() {
   const newPDist = parseFloat(document.getElementById('modal-p-distributor').value) || 0;
   const newPCons = parseFloat(document.getElementById('modal-p-consumer').value) || 0;
 
-  // Registrar en LOG_HISTORICO_PRECIOS
   try {
     await gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
@@ -474,7 +580,7 @@ async function guardarCambiosModal() {
     await reescribirHojaCatalogo();
     cerrarModal();
     renderizarDashboardStock();
-    document.getElementById('status').innerText = 'Cambios de producto guardados en el LOG.';
+    document.getElementById('status').innerText = 'Cambios guardados exitosamente.';
   } catch (err) {
     alert('Error al guardar en LOG: ' + err.message);
   }
