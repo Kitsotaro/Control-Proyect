@@ -1,7 +1,13 @@
 // CONFIGURACIÓN CENTRAL
 const CLIENT_ID = '1070607567316-mdbd97lbkprgpc4spj71e5f8anovr6it.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
-const DB_FILE_NAME = 'RutaControl_DB';
+const DB_FILE_NAME = 'StockCentral_DB';
+// Nombres antiguos: si el archivo ya existe con alguno de estos nombres, se RENOMBRA
+// automáticamente al nuevo (sin perder datos) en vez de crear una base nueva.
+const LEGACY_DB_NAMES = ['RutaControl_DB'];
+
+const DEFAULT_STOCK_MIN = 4;
+const DEFAULT_STOCK_MAX = 6;
 
 let SPREADSHEET_ID = '';
 let tokenClient;
@@ -19,7 +25,137 @@ let estadoModalSeleccionado = 'ACTIVO';
 window.addEventListener('DOMContentLoaded', () => {
   const fechaInput = document.getElementById('fecha-mov');
   if (fechaInput) fechaInput.valueAsDate = new Date();
+
+  iniciarRelojCaptura();
+  inicializarAutocompletesEntrada();
+  inicializarBuscadorVenta();
 });
+
+// RELOJ DE CAPTURA EN VIVO (muestra el timestamp que se grabará al guardar)
+function iniciarRelojCaptura() {
+  const el = document.getElementById('log-timestamp-live');
+  if (!el) return;
+  const actualizar = () => {
+    const now = new Date();
+    el.textContent = now.toLocaleString('es-ES', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
+  };
+  actualizar();
+  setInterval(actualizar, 1000);
+}
+
+// LIMPIAR FORMULARIO ACTIVO
+function limpiarFormularioActivo() {
+  if (tipoMovimiento === 'ENTRADA') {
+    document.getElementById('form-entrada').reset();
+  } else {
+    document.getElementById('form-venta').reset();
+    const tipoEmpEl = document.getElementById('venta-prod-tipo-empaque');
+    if (tipoEmpEl) tipoEmpEl.value = '';
+    productoVentaSeleccionado = null;
+    document.getElementById('btn-save-out').disabled = true;
+  }
+  document.getElementById('fecha-mov').valueAsDate = new Date();
+  generarFolioCorrelativo();
+}
+
+// ===== AUTOCOMPLETADO PROPIO (reemplaza al <datalist> nativo, que no se puede estilizar) =====
+function crearAutocomplete(inputId, dropdownId, getOpciones, onSeleccionar, renderItem) {
+  const input = document.getElementById(inputId);
+  const dropdown = document.getElementById(dropdownId);
+  if (!input || !dropdown) return;
+
+  function render(query) {
+    const opciones = getOpciones(query.trim());
+    dropdown.innerHTML = '';
+    if (!query.trim() || opciones.length === 0) {
+      dropdown.classList.add('hidden');
+      return;
+    }
+    opciones.slice(0, 8).forEach(opt => {
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      item.innerHTML = renderItem(opt);
+      // mousedown (no click) para que dispare ANTES del blur del input
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        onSeleccionar(opt);
+        dropdown.classList.add('hidden');
+      });
+      dropdown.appendChild(item);
+    });
+    dropdown.classList.remove('hidden');
+  }
+
+  input.addEventListener('input', () => render(input.value));
+  input.addEventListener('focus', () => { if (input.value.trim()) render(input.value); });
+  input.addEventListener('blur', () => setTimeout(() => dropdown.classList.add('hidden'), 150));
+}
+
+function sugerirValoresUnicos(campo, query) {
+  const q = query.toLowerCase();
+  const valores = [...new Set(catalogoProductos.map(p => p[campo]).filter(Boolean))];
+  return valores.filter(v => v.toLowerCase().includes(q));
+}
+
+function inicializarAutocompletesEntrada() {
+  crearAutocomplete('prod-marca', 'ac-marca', q => sugerirValoresUnicos('marca', q),
+    v => { document.getElementById('prod-marca').value = v; }, v => v);
+  crearAutocomplete('prod-linea', 'ac-linea', q => sugerirValoresUnicos('linea', q),
+    v => { document.getElementById('prod-linea').value = v; }, v => v);
+  crearAutocomplete('prod-tipo-empaque', 'ac-tipoempaque', q => sugerirValoresUnicos('tipoEmpaque', q),
+    v => { document.getElementById('prod-tipo-empaque').value = v; }, v => v);
+  crearAutocomplete('prod-presentacion', 'ac-presentacion', q => sugerirValoresUnicos('magnitud', q),
+    v => { document.getElementById('prod-presentacion').value = v; }, v => v);
+}
+
+// ===== BUSCADOR DE VENTA (reemplaza datalist + parsing frágil de texto) =====
+function inicializarBuscadorVenta() {
+  const input = document.getElementById('buscar-producto-venta');
+  const dropdown = document.getElementById('dropdown-productos-venta');
+  const btnSave = document.getElementById('btn-save-out');
+  if (!input || !dropdown) return;
+
+  function limpiarSeleccion() {
+    productoVentaSeleccionado = null;
+    ['venta-prod-marca', 'venta-prod-linea', 'venta-prod-presentacion', 'venta-prod-variante', 'venta-prod-volumen', 'venta-prod-tipo-empaque']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    if (btnSave) btnSave.disabled = true;
+  }
+
+  function buscar(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) return [];
+    return catalogoProductos.filter(p => p.estado === 'ACTIVO' && (
+      p.sku.toLowerCase().includes(q) ||
+      p.marca.toLowerCase().includes(q) ||
+      p.linea.toLowerCase().includes(q) ||
+      (p.variante || '').toLowerCase().includes(q)
+    )).slice(0, 8);
+  }
+
+  function seleccionar(p) {
+    productoVentaSeleccionado = p;
+    input.value = `[${p.sku}] ${p.marca} ${p.linea}`;
+    document.getElementById('venta-prod-marca').value = p.marca;
+    document.getElementById('venta-prod-linea').value = p.linea;
+    document.getElementById('venta-prod-presentacion').value = p.magnitud;
+    document.getElementById('venta-prod-variante').value = p.variante;
+    document.getElementById('venta-prod-volumen').value = p.volumen;
+    const tipoEmpEl = document.getElementById('venta-prod-tipo-empaque');
+    if (tipoEmpEl) tipoEmpEl.value = p.tipoEmpaque || '--';
+    if (btnSave) btnSave.disabled = false;
+  }
+
+  crearAutocomplete('buscar-producto-venta', 'dropdown-productos-venta', buscar, seleccionar, p => `
+    <div class="ac-item-main">${p.marca} ${p.linea} ${p.volumen}${p.variante ? ' · ' + p.variante : ''}</div>
+    <div class="ac-item-sub">SKU: ${p.sku} · ${p.magnitud} · Stock: ${p.stock}</div>
+  `);
+
+  input.addEventListener('input', () => { if (productoVentaSeleccionado) limpiarSeleccion(); });
+}
 
 function gapiLoaded() {
   gapi.load('client', async () => {
@@ -129,18 +265,25 @@ async function cargarDatosIniciales() {
 
     const res = await gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'CATALOGO!A2:L',
+      range: 'CATALOGO!A2:O',
     });
+
+    const numOrDefault = (val, def) => {
+      const n = parseFloat(val);
+      return (val !== undefined && val !== '' && !isNaN(n)) ? n : def;
+    };
 
     const rows = res.result ? res.result.values || [] : [];
     catalogoProductos = rows.map(r => ({
       sku: r[0], marca: r[1], linea: r[2], magnitud: r[3],
       cantEmp: parseInt(r[4]) || 1, volumen: r[5], variante: r[6] || '',
       pDist: parseFloat(r[7]) || 0, pCons: parseFloat(r[8]) || 0,
-      stock: parseFloat(r[9]) || 0, estado: r[10] || 'ACTIVO'
+      stock: parseFloat(r[9]) || 0, estado: r[10] || 'ACTIVO',
+      tipoEmpaque: r[12] || '',
+      stockMin: numOrDefault(r[13], DEFAULT_STOCK_MIN),
+      stockMax: numOrDefault(r[14], DEFAULT_STOCK_MAX)
     }));
 
-    poblarDataLists();
     generarFolioCorrelativo();
     document.getElementById('status').innerText = 'Conectado a la base de datos.';
   } catch (err) {
@@ -148,35 +291,51 @@ async function cargarDatosIniciales() {
   }
 }
 
-async function buscarOCrearBaseDatos() {
+async function buscarArchivoPorNombre(nombre) {
   const response = await gapi.client.drive.files.list({
-    q: `name = '${DB_FILE_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
+    q: `name = '${nombre}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
     fields: 'files(id, name)',
     spaces: 'drive'
   });
-
   const files = response.result ? response.result.files : null;
+  return (files && files.length > 0) ? files[0] : null;
+}
 
-  if (files && files.length > 0) {
-    return files[0].id;
-  } else {
-    document.getElementById('status').innerText = 'Creando nueva base de datos en tu Drive...';
-    
-    const createRes = await gapi.client.sheets.spreadsheets.create({
-      resource: {
-        properties: { title: DB_FILE_NAME },
-        sheets: [
-          { properties: { title: 'LOG_TRANS' } },
-          { properties: { title: 'CATALOGO' } },
-          { properties: { title: 'LOG_HISTORICO_PRECIOS' } }
-        ]
-      }
-    });
+async function buscarOCrearBaseDatos() {
+  // 1. Buscar con el nombre actual
+  const actual = await buscarArchivoPorNombre(DB_FILE_NAME);
+  if (actual) return actual.id;
 
-    const newSpreadsheetId = createRes.result.spreadsheetId;
-    await inicializarEncabezadosBD(newSpreadsheetId);
-    return newSpreadsheetId;
+  // 2. Buscar con nombres antiguos y migrar (renombrar) si se encuentra, sin perder datos
+  for (const nombreLegacy of LEGACY_DB_NAMES) {
+    const legacy = await buscarArchivoPorNombre(nombreLegacy);
+    if (legacy) {
+      document.getElementById('status').innerText = `Migrando base de datos de "${nombreLegacy}" a "${DB_FILE_NAME}"...`;
+      await gapi.client.drive.files.update({
+        fileId: legacy.id,
+        resource: { name: DB_FILE_NAME }
+      });
+      return legacy.id;
+    }
   }
+
+  // 3. No existe con ningún nombre -> crear una base nueva desde cero
+  document.getElementById('status').innerText = 'Creando nueva base de datos en tu Drive...';
+
+  const createRes = await gapi.client.sheets.spreadsheets.create({
+    resource: {
+      properties: { title: DB_FILE_NAME },
+      sheets: [
+        { properties: { title: 'LOG_TRANS' } },
+        { properties: { title: 'CATALOGO' } },
+        { properties: { title: 'LOG_HISTORICO_PRECIOS' } }
+      ]
+    }
+  });
+
+  const newSpreadsheetId = createRes.result.spreadsheetId;
+  await inicializarEncabezadosBD(newSpreadsheetId);
+  return newSpreadsheetId;
 }
 
 async function inicializarEncabezadosBD(spreadsheetId) {
@@ -190,7 +349,8 @@ async function inicializarEncabezadosBD(spreadsheetId) {
   const encabezadosCatalogo = [
     'SKU_ITEM', 'MARCA', 'LINEA_PROD', 'MAGNITUD', 'CANT_EMPAQUE',
     'VOLUMEN', 'VARIANTE', 'P_DISTRIBUIDOR', 'P_CONSUMIDOR',
-    'STOCK_ACTUAL', 'ESTADO_ITEM', 'ULTIMA_MODIF'
+    'STOCK_ACTUAL', 'ESTADO_ITEM', 'ULTIMA_MODIF',
+    'TIPO_EMPAQUE', 'STOCK_MIN', 'STOCK_MAX'
   ];
 
   const encabezadosHistorico = [
@@ -204,50 +364,14 @@ async function inicializarEncabezadosBD(spreadsheetId) {
       valueInputOption: 'USER_ENTERED',
       data: [
         { range: 'LOG_TRANS!A1:S1', values: [encabezadosLOG] },
-        { range: 'CATALOGO!A1:L1', values: [encabezadosCatalogo] },
+        { range: 'CATALOGO!A1:O1', values: [encabezadosCatalogo] },
         { range: 'LOG_HISTORICO_PRECIOS!A1:H1', values: [encabezadosHistorico] }
       ]
     }
   });
 }
 
-function poblarDataLists() {
-  const dlProds = document.getElementById('dl-productos');
-  if (!dlProds) return;
-  dlProds.innerHTML = '';
-  
-  catalogoProductos.filter(p => p.estado === 'ACTIVO').forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = `[${p.sku}] ${p.marca} ${p.linea} ${p.volumen} ${p.variante}`.trim();
-    dlProds.appendChild(opt);
-  });
-}
 
-function onSeleccionarProductoVenta(val) {
-  const prod = catalogoProductos.find(p => 
-    val.includes(`[${p.sku}]`) || p.sku.toLowerCase() === val.trim().toLowerCase()
-  );
-
-  const btnSave = document.getElementById('btn-save-out');
-
-  if (prod) {
-    productoVentaSeleccionado = prod;
-    document.getElementById('venta-prod-marca').value = prod.marca;
-    document.getElementById('venta-prod-linea').value = prod.linea;
-    document.getElementById('venta-prod-presentacion').value = prod.magnitud;
-    document.getElementById('venta-prod-variante').value = prod.variante;
-    document.getElementById('venta-prod-volumen').value = prod.volumen;
-    btnSave.disabled = false;
-  } else {
-    productoVentaSeleccionado = null;
-    document.getElementById('venta-prod-marca').value = '';
-    document.getElementById('venta-prod-linea').value = '';
-    document.getElementById('venta-prod-presentacion').value = '';
-    document.getElementById('venta-prod-variante').value = '';
-    document.getElementById('venta-prod-volumen').value = '';
-    btnSave.disabled = true;
-  }
-}
 
 function generarSKUCompacto(marca, linea, volumen, variante) {
   const clean = (t) => (t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 3);
@@ -291,7 +415,7 @@ async function guardarMovimiento(event) {
   const timestampLog = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const fechaMov = document.getElementById('fecha-mov').value;
 
-  let marca, linea, magnitud, cantEmp, volumen, variante, pDist, pCons, sku, rawCantidad, bonif;
+  let marca, linea, magnitud, cantEmp, volumen, variante, pDist, pCons, sku, rawCantidad, bonif, tipoEmpaque;
 
   if (tipoMovimiento === 'ENTRADA') {
     marca = document.getElementById('prod-marca').value.trim();
@@ -300,6 +424,7 @@ async function guardarMovimiento(event) {
     cantEmp = 1;
     volumen = document.getElementById('prod-volumen').value.trim();
     variante = document.getElementById('prod-variante').value.trim();
+    tipoEmpaque = document.getElementById('prod-tipo-empaque').value.trim();
     rawCantidad = parseFloat(document.getElementById('mov-cantidad-in').value);
     bonif = parseFloat(document.getElementById('mov-bonificacion').value) || 0;
     pDist = parseFloat(document.getElementById('precio-distribuidor').value) || 0;
@@ -351,11 +476,14 @@ async function guardarMovimiento(event) {
       if (tipoMovimiento === 'ENTRADA') {
         catalogoProductos[prodIndex].pDist = pDist || catalogoProductos[prodIndex].pDist;
         catalogoProductos[prodIndex].pCons = pCons || catalogoProductos[prodIndex].pCons;
+        catalogoProductos[prodIndex].tipoEmpaque = tipoEmpaque || catalogoProductos[prodIndex].tipoEmpaque;
       }
     } else {
       catalogoProductos.push({
         sku, marca, linea, magnitud, cantEmp, volumen, variante,
-        pDist, pCons, stock: cantidadSigno, estado: 'ACTIVO'
+        pDist, pCons, stock: cantidadSigno, estado: 'ACTIVO',
+        tipoEmpaque: tipoEmpaque || '',
+        stockMin: DEFAULT_STOCK_MIN, stockMax: DEFAULT_STOCK_MAX
       });
     }
 
@@ -380,12 +508,13 @@ async function guardarMovimiento(event) {
 async function reescribirHojaCatalogo() {
   const rows = catalogoProductos.map(p => [
     p.sku, p.marca, p.linea, p.magnitud, p.cantEmp, p.volumen, p.variante,
-    p.pDist, p.pCons, p.stock, p.estado, new Date().toISOString()
+    p.pDist, p.pCons, p.stock, p.estado, new Date().toISOString(),
+    p.tipoEmpaque || '', p.stockMin ?? DEFAULT_STOCK_MIN, p.stockMax ?? DEFAULT_STOCK_MAX
   ]);
 
   await gapi.client.sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'CATALOGO!A2:L',
+    range: 'CATALOGO!A2:O',
     valueInputOption: 'USER_ENTERED',
     resource: { values: rows }
   });
