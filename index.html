@@ -2,23 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Registro Financiero Privado</title>
   <link rel="manifest" href="manifest.json">
-  <theme-color content="#0f172a">
-  <style>
-    :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #22c55e; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; }
-    .container { width: 100%; max-width: 480px; background: var(--card); padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
-    h2 { margin-top: 0; font-size: 1.25rem; color: #cbd5e1; text-align: center; }
-    .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 0.875rem; margin-bottom: 6px; color: #94a3b8; }
-    input, select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; font-size: 1rem; }
-    button { width: 100%; padding: 14px; border-radius: 8px; border: none; background: var(--accent); color: #022c22; font-weight: bold; font-size: 1rem; cursor: pointer; margin-top: 10px; transition: opacity 0.2s; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .hidden { display: none; }
-    #status { margin-top: 15px; font-size: 0.875rem; text-align: center; color: #94a3b8; word-break: break-all; }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -31,7 +18,7 @@
     <button id="btn-login" onclick="handleAuthClick()">Iniciar Sesión con Google</button>
   </div>
 
-  <!-- Formulario de Datos (Oculto hasta autenticarse) -->
+  <!-- Formulario de Datos -->
   <form id="finance-form" class="hidden" onsubmit="guardarRegistro(event)">
     <div class="form-group">
       <label for="fecha">Fecha</label>
@@ -62,136 +49,10 @@
   <div id="status">Cargando librerías oficiales de Google...</div>
 </div>
 
-<!-- Librerías Oficiales de Google (Única dependencia externa) -->
+<!-- Librerías de Google y Lógica del Proyecto -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
+<script src="app.js"></script>
 
-<script>
-  // CONFIGURACIÓN PRIVADA
-  const CLIENT_ID = '416407370193-ugjvoa045re61hu1epo44l0v4q5mec8c.apps.googleusercontent.com'; // <-- REEMPLAZA ESTO CON TU CLIENT ID
-  const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
-  const SPREADSHEET_NAME = 'Mi_Control_Financiero_Privado';
-
-  let tokenClient;
-  let gapiInited = false;
-  let gsisInited = false;
-  let spreadsheetId = null;
-
-  document.getElementById('fecha').valueAsDate = new Date();
-
-  function gapiLoaded() {
-    gapi.load('client', async () => {
-      await gapi.client.init({});
-      await gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4');
-      await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-      gapiInited = true;
-      checkAuthReady();
-    });
-  }
-
-  function gisLoaded() {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: '', 
-    });
-    gsisInited = true;
-    checkAuthReady();
-  }
-
-  window.onload = () => { gapiLoaded(); gisLoaded(); };
-
-  function checkAuthReady() {
-    if (gapiInited && gsisInited) {
-      document.getElementById('status').innerText = 'Listo para conectar.';
-    }
-  }
-
-  function handleAuthClick() {
-    tokenClient.callback = async (resp) => {
-      if (resp.error) throw (resp);
-      document.getElementById('auth-section').classList.add('hidden');
-      document.getElementById('finance-form').classList.remove('hidden');
-      document.getElementById('status').innerText = 'Verificando archivo en tu Drive...';
-      await inicializarHojaCalculo();
-    };
-
-    if (gapi.client.getToken() === null) {
-      tokenClient.requestAccessToken({prompt: 'consent'});
-    } else {
-      tokenClient.requestAccessToken({prompt: ''});
-    }
-  }
-
-  async function inicializarHojaCalculo() {
-    try {
-      // 1. Buscar si la hoja ya existe en el Drive del usuario
-      const response = await gapi.client.drive.files.list({
-        q: `name = '${SPREADSHEET_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-        fields: 'files(id, name)',
-      });
-
-      const files = response.result.files;
-      if (files && files.length > 0) {
-        spreadsheetId = files[0].id;
-        document.getElementById('status').innerText = 'Conectado a tu archivo existente.';
-      } else {
-        // 2. Si no existe, crear una hoja de cálculo desde cero en el Drive del usuario
-        const createResponse = await gapi.client.sheets.spreadsheets.create({
-          properties: { title: SPREADSHEET_NAME },
-          sheets: [{ properties: { title: 'Registros' } }]
-        });
-        spreadsheetId = createResponse.result.spreadsheetId;
-        
-        // Agregar Encabezados
-        await gapi.client.sheets.spreadsheets.values.append({
-          spreadsheetId: spreadsheetId,
-          range: 'Registros!A1',
-          valueInputOption: 'USER_ENTERED',
-          resource: { values: [['Fecha', 'Tipo', 'Concepto', 'Monto']] }
-        });
-        document.getElementById('status').innerText = 'Nuevo archivo de finanzas creado en tu Google Drive.';
-      }
-    } catch (err) {
-      document.getElementById('status').innerText = 'Error: ' + err.message;
-    }
-  }
-
-  async function guardarRegistro(event) {
-    event.preventDefault();
-    const btn = document.getElementById('btn-save');
-    btn.disabled = true;
-    document.getElementById('status').innerText = 'Guardando en tu Google Drive...';
-
-    const fecha = document.getElementById('fecha').value;
-    const tipo = document.getElementById('tipo').value;
-    const concepto = document.getElementById('concepto').value;
-    const monto = parseFloat(document.getElementById('monto').value);
-
-    try {
-      await gapi.client.sheets.spreadsheets.values.append({
-        spreadsheetId: spreadsheetId,
-        range: 'Registros!A:D',
-        valueInputOption: 'USER_ENTERED',
-        resource: { values: [[fecha, tipo, concepto, monto]] }
-      });
-
-      document.getElementById('status').innerText = '¡Guardado con éxito!';
-      document.getElementById('concepto').value = '';
-      document.getElementById('monto').value = '';
-    } catch (err) {
-      document.getElementById('status').innerText = 'Error al guardar: ' + err.message;
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  // Registrar Service Worker para PWA
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js');
-    });
-  }
-</script>
 </body>
 </html>
