@@ -23,8 +23,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function gapiLoaded() {
   gapi.load('client', async () => {
-    await gapi.client.init({});
-    await gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4');
+    await gapi.client.init({
+      discoveryDocs: [
+        'https://sheets.googleapis.com/$discovery/rest?version=v4',
+        'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
+      ]
+    });
     gapiInited = true;
     checkAuthReady();
   });
