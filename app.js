@@ -64,16 +64,18 @@ function handleAuthClick() {
 
 async function inicializarHojaCalculo() {
   try {
+    // Busca el archivo si eres dueño O si te lo compartieron
     const response = await gapi.client.drive.files.list({
       q: `name = '${SPREADSHEET_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
-      fields: 'files(id, name)',
+      fields: 'files(id, name, sharedWithMe)',
     });
 
     const files = response.result.files;
     if (files && files.length > 0) {
       spreadsheetId = files[0].id;
-      document.getElementById('status').innerText = 'Conectado a tu archivo existente.';
+      document.getElementById('status').innerText = 'Conectado a la hoja de cálculo.';
     } else {
+      // Si no existe ni se ha compartido, crea una nueva
       const createResponse = await gapi.client.sheets.spreadsheets.create({
         properties: { title: SPREADSHEET_NAME },
         sheets: [{ properties: { title: 'Registros' } }]
