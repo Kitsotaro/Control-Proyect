@@ -43,6 +43,11 @@
           <button type="button" id="btn-tipo-venta" class="toggle-btn" onclick="setTipoMovimiento('VENTA')">📤 Venta (Despacho)</button>
         </div>
 
+        <div class="log-timestamp-row">
+          <span class="log-timestamp-label">Hora de captura: <span id="log-timestamp-live">--:--:--</span></span>
+          <button type="button" class="btn-secondary-sm" onclick="limpiarFormularioActivo()">🧹 Limpiar</button>
+        </div>
+
         <!-- FECHA Y FOLIO -->
         <div class="form-row">
           <div class="form-group">
@@ -59,36 +64,40 @@
         <form id="form-entrada" onsubmit="guardarMovimiento(event)">
           <!-- Fila 1: Marca + Producto -->
           <div class="form-row">
-            <div class="form-group">
+            <div class="form-group autocomplete-wrapper">
               <label>Marca / Empresa</label>
-              <input type="text" id="prod-marca" placeholder="Ej: La Constancia" required />
+              <input type="text" id="prod-marca" placeholder="Ej: La Constancia" autocomplete="off" required />
+              <div id="ac-marca" class="autocomplete-dropdown hidden"></div>
             </div>
-            <div class="form-group">
+            <div class="form-group autocomplete-wrapper">
               <label>Producto / Línea</label>
-              <input type="text" id="prod-linea" placeholder="Ej: Pepsi" required />
+              <input type="text" id="prod-linea" placeholder="Ej: Pepsi" autocomplete="off" required />
+              <div id="ac-linea" class="autocomplete-dropdown hidden"></div>
             </div>
           </div>
 
           <!-- Fila 2: Tipo de Empaque, Cantidad, Presentación -->
           <div class="form-row">
-            <div class="form-group">
+            <div class="form-group autocomplete-wrapper">
               <label>Tipo de Empaque</label>
-              <input type="text" id="prod-tipo-empaque" placeholder="Caja, Sixpack, etc." required />
+              <input type="text" id="prod-tipo-empaque" placeholder="Caja, Sixpack, etc." autocomplete="off" required />
+              <div id="ac-tipoempaque" class="autocomplete-dropdown hidden"></div>
             </div>
             <div class="form-group" style="flex: 0.6;">
               <label>Cantidad</label>
               <input type="number" step="any" id="mov-cantidad-in" placeholder="Ej: 10" required />
             </div>
-            <div class="form-group">
+            <div class="form-group autocomplete-wrapper">
               <label>Presentación</label>
-              <input type="text" id="prod-presentacion" placeholder="Botella, Lata, Tetra" required />
+              <input type="text" id="prod-presentacion" placeholder="Botella, Lata, Tetra" autocomplete="off" required />
+              <div id="ac-presentacion" class="autocomplete-dropdown hidden"></div>
             </div>
           </div>
 
           <!-- Fila 3: Variante + Contenido/Volumen -->
           <div class="form-row">
             <div class="form-group">
-              <label>Variante</label>
+              <label>Variante (Opcional)</label>
               <input type="text" id="prod-variante" placeholder="Uva Fresa Crunch" />
             </div>
             <div class="form-group">
@@ -100,7 +109,7 @@
           <!-- Fila Bonificación -->
           <div class="form-group" id="group-bonificacion">
             <label>Cantidad Bonificada (Regalo / Promoción)</label>
-            <input type="number" step="any" id="mov-bonificacion" placeholder="0" value="0" />
+            <input type="number" step="any" id="mov-bonificacion" placeholder="0" />
           </div>
 
           <!-- Fila Precios -->
@@ -109,12 +118,12 @@
             <div class="form-row">
               <div class="form-group" id="group-precio-distribuidor">
                 <label>Precio Distribuidor (Costo)</label>
-                <input type="number" step="0.00001" inputmode="decimal" id="precio-distribuidor" placeholder="00.000" required oninput="validarPrecioDistribuidor(this)" />
+                <input type="number" step="0.00001" min="0" inputmode="decimal" id="precio-distribuidor" placeholder="00.000" required oninput="validarPrecioDistribuidor(this)" />
                 <span id="warn-pdist" class="warning-text hidden">Máximo 5 decimales permitidos</span>
               </div>
               <div class="form-group">
                 <label>Precio Consumidor (Venta)</label>
-                <input type="number" step="0.01" inputmode="decimal" id="precio-consumidor" placeholder="0.00" required oninput="validarPrecioConsumidor(this)" />
+                <input type="number" step="0.01" min="0" inputmode="decimal" id="precio-consumidor" placeholder="0.00" required oninput="validarPrecioConsumidor(this)" />
               </div>
             </div>
           </div>
@@ -125,10 +134,10 @@
         <!-- FORMULARIO DE VENTA -->
         <form id="form-venta" class="hidden" onsubmit="guardarMovimiento(event)">
           <!-- Buscador directo del catálogo -->
-          <div class="form-group">
+          <div class="form-group autocomplete-wrapper">
             <label>🔍 Buscar Producto (Código SKU o Texto)</label>
-            <input type="text" id="buscar-producto-venta" list="dl-productos" placeholder="Buscar por SKU o nombre..." oninput="onSeleccionarProductoVenta(this.value)" required />
-            <datalist id="dl-productos"></datalist>
+            <input type="text" id="buscar-producto-venta" placeholder="Buscar por SKU o nombre..." autocomplete="off" required />
+            <div id="dropdown-productos-venta" class="autocomplete-dropdown hidden"></div>
           </div>
 
           <!-- Campos Deshabilitados autocompletados -->
@@ -156,6 +165,13 @@
               <label>Cont. / Vol.</label>
               <input type="text" id="venta-prod-volumen" class="input-disabled" readonly placeholder="--" />
             </div>
+          </div>
+
+          <!-- Tipo de Empaque (informativo, autocompletado al seleccionar el producto) -->
+          <div class="form-group">
+            <label>📦 Tipo de Empaque a Despachar</label>
+            <input type="text" id="venta-prod-tipo-empaque" class="input-disabled" readonly placeholder="--" />
+            <span class="field-hint">Usar esta unidad para el despacho</span>
           </div>
 
           <!-- Cantidad y Botón Guardar -->
@@ -252,12 +268,12 @@
     
     <div class="form-group">
       <label for="modal-p-distributor">Precio Distribuidor ($)</label>
-      <input type="number" id="modal-p-distributor" step="0.00001" oninput="validarPrecioDistribuidor(this)">
+      <input type="number" id="modal-p-distributor" step="0.00001" min="0" oninput="validarPrecioDistribuidor(this)">
     </div>
     
     <div class="form-group">
       <label for="modal-p-consumer">Precio Consumidor ($)</label>
-      <input type="number" id="modal-p-consumer" step="0.01" oninput="validarPrecioConsumidor(this)">
+      <input type="number" id="modal-p-consumer" step="0.01" min="0" oninput="validarPrecioConsumidor(this)">
     </div>
 
     <div class="form-group">
