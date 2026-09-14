@@ -323,3 +323,107 @@ input::placeholder {
 }
 
 .hidden { display: none !important; }
+
+/* ===== RELOJ DE CAPTURA + LIMPIAR CAMPOS ===== */
+.log-timestamp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 2px 0 14px 0;
+}
+
+.log-timestamp-label {
+  color: var(--subtext);
+  font-size: 0.7rem;
+}
+
+/* ===== AUTOCOMPLETADO PROPIO (reemplaza <datalist>, que no se puede estilizar) ===== */
+.autocomplete-wrapper {
+  position: relative;
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.autocomplete-item {
+  padding: 9px 11px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--card-border);
+  font-size: 0.82rem;
+}
+
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+.ac-item-main {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.ac-item-sub {
+  color: var(--subtext);
+  font-size: 0.7rem;
+  margin-top: 2px;
+}
+
+.field-hint {
+  color: var(--subtext);
+  font-size: 0.72rem;
+  margin-top: 4px;
+}
+
+/* ===== BOTÓN SECUNDARIO (usado en modal, ej. Cancelar) ===== */
+.btn-secondary {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ===== MODAL (faltaba por completo: sin esto, el editor no se comporta como modal) ===== */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
